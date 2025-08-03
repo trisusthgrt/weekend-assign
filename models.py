@@ -55,13 +55,24 @@ class ResearchPaper(Base):
     __tablename__ = "research_papers"
     
     id = Column(Integer, primary_key=True, index=True)
-    title = Column(String(255), nullable=False)
-    researcher_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String(500), nullable=False)
+    authors = Column(Text, nullable=False)  # JSON string of author user IDs
+    publication_date = Column(DateTime, nullable=False)
+    journal = Column(String(255))
+    abstract = Column(Text)
+    keywords = Column(Text)  # Comma-separated keywords
+    citations = Column(Text)
+    license = Column(String(100))
+    uploader_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     file_path = Column(String(500))
+    file_name = Column(String(255))
+    file_size = Column(Integer)  # Size in bytes
+    is_official = Column(Boolean, default=False)  # True if uploaded by admin
     upload_date = Column(DateTime, default=func.now())
+    download_count = Column(Integer, default=0)
     
     # Relationships
-    researcher = relationship("User", back_populates="research_papers")
+    uploader = relationship("User", back_populates="research_papers")
     feedback = relationship("Feedback", back_populates="paper")
 
 class Feedback(Base):
@@ -72,7 +83,10 @@ class Feedback(Base):
     reviewer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     content = Column(Text, nullable=False)
     rating = Column(Integer)  # 1-5 rating
+    feedback_type = Column(String(50), default="general")  # general, peer_review, etc.
+    is_helpful = Column(Boolean, default=True)
     created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     
     # Relationships
     paper = relationship("ResearchPaper", back_populates="feedback")

@@ -90,25 +90,98 @@ class UserList(BaseModel):
     page: int
     per_page: int
 
-# Research Paper schemas (for profile response)
+# Research Paper schemas
+class PaperUpload(BaseModel):
+    title: str
+    authors: List[int]  # List of user IDs who are authors
+    publication_date: datetime
+    journal: Optional[str] = None
+    abstract: Optional[str] = None
+    keywords: Optional[str] = None
+    citations: Optional[str] = None
+    license: Optional[str] = None
+
+    @validator('title')
+    def title_must_be_valid(cls, v):
+        if len(v.strip()) < 5:
+            raise ValueError('Title must be at least 5 characters')
+        return v.strip()
+
+    @validator('publication_date')
+    def publication_date_not_future(cls, v):
+        if v > datetime.now():
+            raise ValueError('Publication date cannot be in the future')
+        return v
+
+    @validator('authors')
+    def authors_must_not_be_empty(cls, v):
+        if not v or len(v) == 0:
+            raise ValueError('At least one author is required')
+        return v
+
 class ResearchPaperResponse(BaseModel):
     id: int
     title: str
+    authors: str  # JSON string of author IDs
+    publication_date: datetime
+    journal: Optional[str]
+    abstract: Optional[str]
+    keywords: Optional[str]
+    citations: Optional[str]
+    license: Optional[str]
+    uploader_id: int
+    file_name: Optional[str]
+    file_size: Optional[int]
+    is_official: bool
     upload_date: datetime
+    download_count: int
 
     class Config:
         from_attributes = True
 
-# Feedback schemas (for profile response)
+class PaperDownloadResponse(BaseModel):
+    message: str
+    file_path: str
+    points_deducted: float
+    remaining_points: float
+
+# Feedback schemas
+class FeedbackCreate(BaseModel):
+    content: str
+    rating: Optional[int] = None
+    feedback_type: Optional[str] = "general"
+
+    @validator('content')
+    def content_must_be_valid(cls, v):
+        if len(v.strip()) < 10:
+            raise ValueError('Feedback must be at least 10 characters')
+        return v.strip()
+
+    @validator('rating')
+    def rating_must_be_valid(cls, v):
+        if v is not None and (v < 1 or v > 5):
+            raise ValueError('Rating must be between 1 and 5')
+        return v
+
 class FeedbackResponse(BaseModel):
     id: int
     paper_id: int
+    reviewer_id: int
     content: str
     rating: Optional[int]
+    feedback_type: str
+    is_helpful: bool
     created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True
+
+class FeedbackCreateResponse(BaseModel):
+    message: str
+    feedback: FeedbackResponse
+    points_awarded: float
+    new_balance: float
 
 # Update forward references
 UserResponse.model_rebuild()
