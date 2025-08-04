@@ -225,9 +225,9 @@ def get_user_profile(
     
     # If user is researcher, fetch contributions
     if user.role == UserRole.RESEARCHER:
-        research_papers = db.query(ResearchPaper).filter(ResearchPaper.researcher_id == user.id).all()
+        research_papers = db.query(ResearchPaper).filter(ResearchPaper.uploader_id == user.id).all()
         feedback_given = db.query(Feedback).filter(Feedback.reviewer_id == user.id).all()
-        user.research_papers = research_papers
+        user.uploaded_papers = research_papers
         user.feedback_given = feedback_given
     
     return user
@@ -342,9 +342,9 @@ def get_user_profile_admin(
     
     # If user is researcher, fetch contributions
     if user.role == UserRole.RESEARCHER:
-        research_papers = db.query(ResearchPaper).filter(ResearchPaper.researcher_id == user.id).all()
+        research_papers = db.query(ResearchPaper).filter(ResearchPaper.uploader_id == user.id).all()
         feedback_given = db.query(Feedback).filter(Feedback.reviewer_id == user.id).all()
-        user.research_papers = research_papers
+        user.uploaded_papers = research_papers
         user.feedback_given = feedback_given
     
     return user

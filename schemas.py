@@ -33,7 +33,7 @@ class UserResponse(BaseModel):
     role: UserRole
     last_login: Optional[datetime]
     created_at: datetime
-    research_papers: Optional[List['ResearchPaperResponse']] = []
+    uploaded_papers: Optional[List['ResearchPaperResponse']] = []
     feedback_given: Optional[List['FeedbackResponse']] = []
 
     class Config:

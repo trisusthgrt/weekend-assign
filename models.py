@@ -34,7 +34,7 @@ class User(Base):
     
     # Relationships
     point_transactions = relationship("PointTransaction", back_populates="user")
-    research_papers = relationship("ResearchPaper", back_populates="researcher")
+    uploaded_papers = relationship("ResearchPaper", back_populates="uploader")
     feedback_given = relationship("Feedback", foreign_keys="Feedback.reviewer_id", back_populates="reviewer")
 
 class PointTransaction(Base):
@@ -72,7 +72,7 @@ class ResearchPaper(Base):
     download_count = Column(Integer, default=0)
     
     # Relationships
-    uploader = relationship("User", back_populates="research_papers")
+    uploader = relationship("User", back_populates="uploaded_papers")
     feedback = relationship("Feedback", back_populates="paper")
 
 class Feedback(Base):
