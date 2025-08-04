@@ -98,3 +98,50 @@ class InvalidatedToken(Base):
     id = Column(Integer, primary_key=True, index=True)
     token = Column(String(500), unique=True, nullable=False)
     invalidated_at = Column(DateTime, default=func.now())
+
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    paper_id = Column(Integer, ForeignKey("research_papers.id"), nullable=False)
+    session_id = Column(String(255), unique=True, nullable=False)  # UUID for session
+    is_active = Column(Boolean, default=True)
+    chunks_processed = Column(Boolean, default=False)  # If paper has been chunked
+    created_at = Column(DateTime, default=func.now())
+    last_interaction = Column(DateTime, default=func.now())
+    
+    # Relationships
+    user = relationship("User")
+    paper = relationship("ResearchPaper")
+    messages = relationship("ChatMessage", back_populates="session")
+
+class DocumentChunk(Base):
+    __tablename__ = "document_chunks"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    paper_id = Column(Integer, ForeignKey("research_papers.id"), nullable=False)
+    chunk_index = Column(Integer, nullable=False)  # Order of chunk in document
+    content = Column(Text, nullable=False)  # Actual text content
+    embedding = Column(Text)  # JSON string of embedding vector
+    chunk_size = Column(Integer)  # Size of chunk in characters
+    overlap_size = Column(Integer, default=0)  # Overlap with adjacent chunks
+    metadata = Column(Text)  # JSON string for additional metadata
+    created_at = Column(DateTime, default=func.now())
+    
+    # Relationships
+    paper = relationship("ResearchPaper")
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("chat_sessions.id"), nullable=False)
+    message_type = Column(String(20), nullable=False)  # 'user' or 'assistant'
+    content = Column(Text, nullable=False)
+    relevant_chunks = Column(Text)  # JSON string of chunk IDs used for response
+    points_cost = Column(Float, default=0.0)  # Points deducted for this message
+    timestamp = Column(DateTime, default=func.now())
+    
+    # Relationships
+    session = relationship("ChatSession", back_populates="messages")

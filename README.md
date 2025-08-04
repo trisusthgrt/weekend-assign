@@ -56,6 +56,18 @@ This project implements Milestones 1 & 2 of the Research Paper Management System
 - ✅ Download count tracking
 - ✅ Secure file serving
 
+### Milestone 3: Chat System (RAG)
+
+#### 3.1 RAG-Based Chat System
+- ✅ Chat endpoint with 2 points per query cost
+- ✅ Automatic document processing and chunking
+- ✅ Vector embeddings with similarity search
+- ✅ Context-aware responses using paper content
+- ✅ Chat session management with history tracking
+- ✅ Points deduction and transaction logging
+- ✅ Insufficient points handling (402 error)
+- ✅ Real-time document processing pipeline
+
 ## Setup Instructions
 
 1. **Install dependencies:**
@@ -113,6 +125,12 @@ This project implements Milestones 1 & 2 of the Research Paper Management System
 - `PUT /papers/feedback/{paper_id}/{user_id}` - Add feedback to paper (+5 points)
 - `GET /papers/{paper_id}/feedback` - Get all feedback for a paper
 
+### Chat System (Milestone 3)
+- `POST /chat/{paper_id}` - Chat with research paper using RAG (costs 2 points)
+- `GET /chat/sessions` - Get user's active chat sessions
+- `GET /chat/sessions/{session_id}/history` - Get chat conversation history
+- `DELETE /chat/sessions/{session_id}` - Deactivate a chat session
+
 ## File Structure
 
 - `main.py` - FastAPI application with all endpoints
@@ -122,10 +140,12 @@ This project implements Milestones 1 & 2 of the Research Paper Management System
 - `dependencies.py` - FastAPI dependencies for auth/authorization
 - `database.py` - Database configuration
 - `file_utils.py` - File upload utilities and validation (Milestone 2)
+- `rag_utils.py` - RAG pipeline for document processing and vector search (Milestone 3)
 - `openai_wrapper.py` - OpenAI API wrapper (as provided)
 - `requirements.txt` - Python dependencies
 - `example_usage.py` - Example API usage (Milestone 1)
 - `milestone2_examples.py` - Example API usage (Milestone 2)
+- `milestone3_examples.py` - Example API usage (Milestone 3)
 - `check_server.py` - Server health check utility
 
 ## Security Features
@@ -164,10 +184,31 @@ The system automatically creates upload directories:
 
 **Spending Points:**
 - Download paper: -10 points
+- Chat with paper (RAG): -2 points per query
 
 **Admin Privileges:**
 - Admins don't earn or spend points
 - Admins have unlimited access to all features
+
+## RAG Chat System (Milestone 3)
+
+**How it works:**
+1. **Document Processing:** When first accessed, papers are automatically processed
+2. **Text Extraction:** PDF content is extracted and cleaned
+3. **Chunking:** Documents are split into overlapping chunks (1000 chars with 200 char overlap)
+4. **Embeddings:** Each chunk gets a vector embedding using sentence-transformers
+5. **Storage:** Chunks and embeddings are stored in the database
+6. **Query Processing:** User questions are converted to embeddings
+7. **Similarity Search:** Most relevant chunks are found using cosine similarity
+8. **Response Generation:** LLM generates answers using relevant paper content
+
+**Technical Features:**
+- **Vector Search:** Cosine similarity for finding relevant content
+- **Context Awareness:** Uses up to 5 most relevant chunks per response
+- **Session Management:** Persistent chat sessions per user-paper combination
+- **Processing Pipeline:** Automatic document processing on first chat attempt
+- **Embedding Model:** sentence-transformers/all-MiniLM-L6-v2 (lightweight, fast)
+- **Chunk Strategy:** Smart text splitting at sentence/word boundaries
 
 ## OpenAI Integration
 
@@ -195,7 +236,12 @@ The `openai_wrapper.py` file contains the provided OpenAI API wrapper that uses 
    python milestone2_examples.py
    ```
 
-5. **Access API documentation:**
+5. **Run Milestone 3 examples:**
+   ```bash
+   python milestone3_examples.py
+   ```
+
+6. **Access API documentation:**
    - Visit: http://localhost:8000/docs
 
 ---

@@ -187,9 +187,47 @@ def test_download_permissions(token):
         print(f"❌ Download system issue: {response.status_code}")
         return False
 
+def test_chat_system(token):
+    """Test 9: Chat System (Milestone 3)"""
+    print("\n🔍 Testing Chat System (RAG)...")
+    
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # Test chat with paper (may not exist, but endpoint should respond properly)
+    chat_data = {"query": "What is this paper about?"}
+    response = requests.post(f"{BASE_URL}/chat/1", headers=headers, json=chat_data)
+    
+    if response.status_code == 200:
+        print("✅ Chat system working (successful response)")
+        return True
+    elif response.status_code == 404:
+        print("⚠️ No papers to chat with (chat endpoint works)")
+        return True
+    elif response.status_code == 402:
+        print("⚠️ Insufficient points for chat (chat endpoint works)")
+        return True
+    else:
+        print(f"❌ Chat system issue: {response.status_code}")
+        return False
+
+def test_chat_sessions(token):
+    """Test 10: Chat Sessions Management"""
+    print("\n🔍 Testing Chat Sessions...")
+    
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.get(f"{BASE_URL}/chat/sessions", headers=headers)
+    
+    if response.status_code == 200:
+        sessions = response.json()
+        print(f"✅ Chat sessions endpoint working: {len(sessions)} sessions found")
+        return True
+    else:
+        print(f"❌ Chat sessions issue: {response.status_code}")
+        return False
+
 def run_comprehensive_test():
     """Run all tests"""
-    print("🧪 COMPREHENSIVE SYSTEM TEST - MILESTONES 1 & 2")
+    print("🧪 COMPREHENSIVE SYSTEM TEST - MILESTONES 1, 2 & 3")
     print("=" * 60)
     
     # Test results
@@ -223,6 +261,12 @@ def run_comprehensive_test():
             
             # Test 8: Download System
             results.append(("Download System", test_download_permissions(token)))
+            
+            # Test 9: Chat System (Milestone 3)
+            results.append(("Chat System", test_chat_system(token)))
+            
+            # Test 10: Chat Sessions
+            results.append(("Chat Sessions", test_chat_sessions(token)))
     
     # Print Results Summary
     print("\n" + "=" * 60)

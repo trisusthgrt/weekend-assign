@@ -183,5 +183,55 @@ class FeedbackCreateResponse(BaseModel):
     points_awarded: float
     new_balance: float
 
+# Chat System schemas (Milestone 3)
+class ChatQuery(BaseModel):
+    query: str
+    
+    @validator('query')
+    def query_must_be_valid(cls, v):
+        if not v or len(v.strip()) < 3:
+            raise ValueError('Query must be at least 3 characters')
+        if len(v) > 1000:
+            raise ValueError('Query must be less than 1000 characters')
+        return v.strip()
+
+class ChatResponse(BaseModel):
+    session_id: str
+    response: str
+    points_deducted: float
+    remaining_points: float
+    relevant_chunks_count: int
+    processing_status: str  # "processed", "processing", "error"
+
+class ChatSessionResponse(BaseModel):
+    id: int
+    session_id: str
+    paper_id: int
+    paper_title: str
+    is_active: bool
+    chunks_processed: bool
+    created_at: datetime
+    last_interaction: datetime
+    message_count: int
+
+    class Config:
+        from_attributes = True
+
+class ChatMessageResponse(BaseModel):
+    id: int
+    message_type: str  # 'user' or 'assistant'
+    content: str
+    points_cost: float
+    timestamp: datetime
+    relevant_chunks_count: Optional[int] = 0
+
+    class Config:
+        from_attributes = True
+
+class ChatHistoryResponse(BaseModel):
+    session: ChatSessionResponse
+    messages: List[ChatMessageResponse]
+    total_points_spent: float
+
 # Update forward references
 UserResponse.model_rebuild()

@@ -9,12 +9,13 @@ import secrets
 import json
 
 from database import get_db, create_tables
-from models import User, UserRole, PointTransaction, InvalidatedToken, ResearchPaper, Feedback
+from models import User, UserRole, PointTransaction, InvalidatedToken, ResearchPaper, Feedback, ChatSession, ChatMessage, DocumentChunk
 from schemas import (
     UserRegister, UserLogin, UserResponse, UserUpdate, UserRoleUpdate,
     Token, ForgotPassword, ResetPassword, PointsBalance, PointTransaction as PointTransactionSchema,
     AddPointsRequest, UserList, PaperUpload, ResearchPaperResponse, PaperDownloadResponse,
-    FeedbackCreate, FeedbackResponse, FeedbackCreateResponse
+    FeedbackCreate, FeedbackResponse, FeedbackCreateResponse,
+    ChatQuery, ChatResponse, ChatSessionResponse, ChatMessageResponse, ChatHistoryResponse
 )
 from auth import (
     verify_password, get_password_hash, validate_password_complexity,
@@ -26,6 +27,10 @@ from dependencies import (
     require_researcher_or_admin, check_user_access, security
 )
 from file_utils import save_uploaded_file, ensure_file_exists, create_upload_directories
+from rag_utils import (
+    create_or_get_chat_session, ensure_paper_processed, 
+    generate_rag_response, process_paper_for_rag
+)
 
 app = FastAPI(title="Research Paper Management System", version="1.0.0")
 
@@ -738,6 +743,252 @@ def get_paper_feedback(
     
     feedback = db.query(Feedback).filter(Feedback.paper_id == paper_id).all()
     return feedback
+
+# Milestone 3: Chat System (RAG)
+
+@app.post("/chat/{paper_id}", response_model=ChatResponse)
+def chat_with_paper(
+    paper_id: int,
+    query: ChatQuery,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Chat with a research paper using RAG (Retrieval Augmented Generation)."""
+    
+    # Check if paper exists
+    paper = db.query(ResearchPaper).filter(ResearchPaper.id == paper_id).first()
+    if not paper:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Paper not found"
+        )
+    
+    # Check if user has enough points
+    chat_cost = 2.0
+    if current_user.hasher_points < chat_cost:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"Insufficient points. You have {current_user.hasher_points} points, but need {chat_cost} points to chat."
+        )
+    
+    try:
+        # Create or get chat session
+        session = create_or_get_chat_session(current_user.id, paper_id, db)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create chat session"
+            )
+        
+        # Ensure paper is processed for RAG
+        if not session.chunks_processed:
+            print(f"Processing paper {paper_id} for RAG...")
+            processing_success = ensure_paper_processed(paper_id, db)
+            
+            if processing_success:
+                session.chunks_processed = True
+                db.commit()
+                processing_status = "processed"
+            else:
+                processing_status = "processing"
+                # Still allow chat but with limited functionality
+        else:
+            processing_status = "processed"
+        
+        # Deduct points from user
+        current_user.hasher_points -= chat_cost
+        
+        # Create transaction record
+        transaction = PointTransaction(
+            user_id=current_user.id,
+            purpose="chat",
+            credited=0.0,
+            debited=chat_cost,
+            balance_points=current_user.hasher_points
+        )
+        db.add(transaction)
+        
+        # Generate RAG response
+        if processing_status == "processed":
+            response_text, relevant_chunk_ids = generate_rag_response(query.query, paper_id, db)
+            relevant_chunks_count = len(relevant_chunk_ids)
+        else:
+            # Fallback response when paper is not yet processed
+            response_text = f"""I'm still processing the paper "{paper.title}" for analysis. 
+            
+            Your question: {query.query}
+            
+            While the document is being processed, I can provide some general information based on the paper's metadata:
+            - Title: {paper.title}
+            - Upload Date: {paper.upload_date}
+            - Journal: {paper.journal or 'Not specified'}
+            
+            Please try your question again in a few moments once processing is complete."""
+            relevant_chunk_ids = []
+            relevant_chunks_count = 0
+        
+        # Save user message
+        user_message = ChatMessage(
+            session_id=session.id,
+            message_type="user",
+            content=query.query,
+            points_cost=chat_cost
+        )
+        db.add(user_message)
+        
+        # Save assistant response
+        assistant_message = ChatMessage(
+            session_id=session.id,
+            message_type="assistant",
+            content=response_text,
+            relevant_chunks=json.dumps(relevant_chunk_ids) if relevant_chunk_ids else None,
+            points_cost=0.0
+        )
+        db.add(assistant_message)
+        
+        # Update session last interaction
+        session.last_interaction = datetime.utcnow()
+        
+        db.commit()
+        
+        return {
+            "session_id": session.session_id,
+            "response": response_text,
+            "points_deducted": chat_cost,
+            "remaining_points": current_user.hasher_points,
+            "relevant_chunks_count": relevant_chunks_count,
+            "processing_status": processing_status
+        }
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error in chat endpoint: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while processing your chat request"
+        )
+
+@app.get("/chat/sessions", response_model=List[ChatSessionResponse])
+def get_user_chat_sessions(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get all chat sessions for the current user."""
+    
+    sessions = db.query(ChatSession).filter(
+        ChatSession.user_id == current_user.id,
+        ChatSession.is_active == True
+    ).order_by(ChatSession.last_interaction.desc()).all()
+    
+    session_responses = []
+    for session in sessions:
+        # Count messages in session
+        message_count = db.query(ChatMessage).filter(ChatMessage.session_id == session.id).count()
+        
+        session_responses.append({
+            "id": session.id,
+            "session_id": session.session_id,
+            "paper_id": session.paper_id,
+            "paper_title": session.paper.title,
+            "is_active": session.is_active,
+            "chunks_processed": session.chunks_processed,
+            "created_at": session.created_at,
+            "last_interaction": session.last_interaction,
+            "message_count": message_count
+        })
+    
+    return session_responses
+
+@app.get("/chat/sessions/{session_id}/history", response_model=ChatHistoryResponse)
+def get_chat_history(
+    session_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get chat history for a specific session."""
+    
+    # Get session
+    session = db.query(ChatSession).filter(
+        ChatSession.session_id == session_id,
+        ChatSession.user_id == current_user.id
+    ).first()
+    
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chat session not found"
+        )
+    
+    # Get messages
+    messages = db.query(ChatMessage).filter(
+        ChatMessage.session_id == session.id
+    ).order_by(ChatMessage.timestamp.asc()).all()
+    
+    # Calculate total points spent
+    total_points_spent = sum(msg.points_cost for msg in messages)
+    
+    # Format messages
+    message_responses = []
+    for msg in messages:
+        relevant_chunks_count = 0
+        if msg.relevant_chunks:
+            try:
+                chunk_ids = json.loads(msg.relevant_chunks)
+                relevant_chunks_count = len(chunk_ids)
+            except:
+                pass
+        
+        message_responses.append({
+            "id": msg.id,
+            "message_type": msg.message_type,
+            "content": msg.content,
+            "points_cost": msg.points_cost,
+            "timestamp": msg.timestamp,
+            "relevant_chunks_count": relevant_chunks_count
+        })
+    
+    return {
+        "session": {
+            "id": session.id,
+            "session_id": session.session_id,
+            "paper_id": session.paper_id,
+            "paper_title": session.paper.title,
+            "is_active": session.is_active,
+            "chunks_processed": session.chunks_processed,
+            "created_at": session.created_at,
+            "last_interaction": session.last_interaction,
+            "message_count": len(messages)
+        },
+        "messages": message_responses,
+        "total_points_spent": total_points_spent
+    }
+
+@app.delete("/chat/sessions/{session_id}")
+def deactivate_chat_session(
+    session_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Deactivate a chat session."""
+    
+    session = db.query(ChatSession).filter(
+        ChatSession.session_id == session_id,
+        ChatSession.user_id == current_user.id
+    ).first()
+    
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chat session not found"
+        )
+    
+    session.is_active = False
+    db.commit()
+    
+    return {"message": "Chat session deactivated successfully"}
 
 # Health check endpoint
 @app.get("/health")
